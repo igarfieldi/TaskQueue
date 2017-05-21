@@ -58,20 +58,19 @@ namespace tskque {
 			});
 		}
 
-
 		// Enqueues a new task into the task queue; this returns a future object
 		template < class R, class... Args >
 		std::future<R> enqueue(std::function<R(Args...)> func, Args... args) {
-			// Create both promise and future
+			// Create both promise and future (I know the pointer is ugly...)
 			// Don't forget to delete the promise inside the emplaced function!
-			auto promise = new std::promise<R>();
-			auto result(promise->get_future());
+			auto promise{ new std::promise<R>() };
+			auto result{ promise->get_future() };
 
 			// Lock the queue for emplacing the lambda
 			std::unique_lock<std::mutex> lock(queueMutex);
 
 			// We emplace a lambda into the queue to keep the execution simpler
-			m_taskQueue.emplace([this, promise, args..., func]() {
+			m_taskQueue.emplace([promise, args..., func]()  {
 				std::function<R()> bound = std::bind(func, std::forward<Args>(args)...);
 				execute(bound, *promise);
 
@@ -88,10 +87,15 @@ namespace tskque {
 			return std::move(result);
 		}
 
+		template < class R, class... Args >
+		std::future<R> enqueue(R(*func)(Args... args)) {
+			return std::move(this->enqueue(std::function<R(Args...)>(func), std::forward<Args>(args)...));
+		}
+
 	private:
 		// Actual function execution; also sets the promise value and deletes it afterwards
 		template < class R >
-		void execute(const std::function<R()> &func, std::promise<R> &promise) {
+		static void execute(const std::function<R()> &func, std::promise<R> &promise) {
 			promise.set_value(func());
 		}
 
