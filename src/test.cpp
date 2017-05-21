@@ -47,17 +47,19 @@ size_t testNormal(std::function<R(Args...)> task, size_t count) {
 }
 
 int main() {
-	const size_t TASK_COUNT = 10;
+	const size_t TASK_COUNT = 500;
 	const size_t WORKER_COUNT = 4;
 	std::function<void()> task = []() {
-		double d = 0.0;
-		for (size_t i = 1; i < 10000000; ++i) {
+		volatile double d = 0.0;
+		for (size_t i = 1; i < 1000000; ++i) {
 			d += std::log10(i);
 		}
-		std::cout << d << '\n';
 	};
 
-	std::cout << "Normal: " << testNormal(task, TASK_COUNT) << "ms" << std::endl;
-	std::cout << "Task queue: " << testTaskQueue(task, TASK_COUNT, WORKER_COUNT) << "ms" << std::endl;
+	size_t normalTime = testNormal(task, TASK_COUNT);
+	std::cout << "Normal: " << normalTime << "ms" << std::endl;
+	size_t queueTime = testTaskQueue(task, TASK_COUNT, WORKER_COUNT);
+	std::cout << "Task queue: " << queueTime << "ms" << std::endl;
+	std::cout << "Scaling (" << WORKER_COUNT << " thread(s)): " << normalTime / static_cast<double>(WORKER_COUNT * queueTime) << std::endl;
 	return 0;
 }

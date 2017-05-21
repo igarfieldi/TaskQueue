@@ -8,6 +8,5 @@ endif("${PROJECT_SOURCE_DIR}" STREQUAL "${PROJECT_BINARY_DIR}")
 
 ADD_EXECUTABLE(TaskQueue
 	src/taskqueue.hpp
-	src/queue.hpp
 	src/test.cpp
 )

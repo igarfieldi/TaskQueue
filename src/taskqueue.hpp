@@ -6,15 +6,15 @@
 #include <future>
 #include <thread>
 #include <vector>
-#include "queue.hpp"
+#include <queue>
 
 namespace tskque {
 
 	class TaskQueue {
 	private:
 		const size_t WORKER_COUNT;
-		std::vector<std::thread> m_workers;
-		Queue<std::function<void()>> m_execQueue;
+		std::vector<std::thread> m_workerPool;
+		std::queue<std::function<void()>> m_taskQueue;
 
 		std::atomic<bool> exit;
 		std::atomic<size_t> busyWorkers;
@@ -23,10 +23,10 @@ namespace tskque {
 		std::condition_variable workersIdle;
 
 	public:
-		TaskQueue(size_t workerCount) : WORKER_COUNT(workerCount), m_workers(WORKER_COUNT), m_execQueue(),
+		TaskQueue(size_t workerCount) : WORKER_COUNT(workerCount), m_workerPool(WORKER_COUNT), m_taskQueue(),
 										exit(false), busyWorkers(0), queueMutex(), queueEmpty(), workersIdle() {
 			// Initialize all threads
-			for (auto &t : m_workers) {
+			for (auto &t : m_workerPool) {
 				t = std::thread(&TaskQueue::workerRun, this);
 			}
 		}
@@ -42,7 +42,7 @@ namespace tskque {
 			queueEmpty.notify_all();
 
 			// Join all workers to be able to properly exit
-			for (auto &t : m_workers) {
+			for (auto &t : m_workerPool) {
 				if (t.joinable()) {
 					t.join();
 				}
@@ -54,7 +54,7 @@ namespace tskque {
 			std::unique_lock<std::mutex> lock(queueMutex);
 
 			workersIdle.wait(lock, [this]() {
-				return (busyWorkers == 0) && m_execQueue.empty();
+				return (busyWorkers == 0) && m_taskQueue.empty();
 			});
 		}
 
@@ -71,7 +71,7 @@ namespace tskque {
 			std::unique_lock<std::mutex> lock(queueMutex);
 
 			// We emplace a lambda into the queue to keep the execution simpler
-			m_execQueue.emplace([this, promise, args..., func]() {
+			m_taskQueue.emplace([this, promise, args..., func]() {
 				std::function<R()> bound = std::bind(func, std::forward<Args>(args)...);
 				execute(bound, *promise);
 
@@ -100,10 +100,10 @@ namespace tskque {
 				// First lock the queue
 				std::unique_lock<std::mutex> lock(queueMutex);
 
-				if (m_execQueue.empty()) {
+				if (m_taskQueue.empty()) {
 					// Wait until we got stuff in the queue
 					queueEmpty.wait(lock, [this]() {
-						return !m_execQueue.empty() || exit;
+						return !m_taskQueue.empty() || exit;
 					});
 
 					if (exit) {
@@ -113,8 +113,8 @@ namespace tskque {
 
 				// Get the next task to be executed
 				++busyWorkers;
-				std::function<void()> curr = m_execQueue.front();
-				m_execQueue.pop();
+				std::function<void()> curr = m_taskQueue.front();
+				m_taskQueue.pop();
 
 				// We can unlock the queue now
 				lock.unlock();
